@@ -26,49 +26,43 @@ func (r *router) HandleFunc(method, pattern string, h HandlerFunc) {
 	m[pattern] = h
 }
 
-func (r *router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// http 메서드에 맞는 모든 handers를 반복하면서 요청 URL에 해당하는 handler를 찾음
-	for pattern, handler := range r.handlers[req.Method] {
-		if ok, params := match(pattern, req.URL.Path); ok {
-			// Context 생성
-			c := Context{
-				Params:         make(map[string]interface{}),
-				ResponseWriter: w,
-				Request:        req,
+func (r *router) handler() HandlerFunc {
+	return func(c *Context) {
+		// http 메서드에 맞는 모든 handers를 반복하며 요청 URL에 해당하는 handler를 찾음
+		for pattern, handler := range r.handlers[c.Request.Method] {
+			if ok, params := match(pattern, c.Request.URL.Path); ok {
+				for k, v := range params {
+					c.Params[k] = v
+				}
+				// 요청 URL에 해당하는 handler 수행
+				handler(c)
+				return
 			}
-			for k, v := range params {
-				c.Params[k] = v
-			}
-			// 요청 url에 해당하는 handler 수행
-			handler(&c)
-			return
 		}
+
+		// 요청 URL에 해당하는 handler를 찾지 못하면 NotFound 에러 처리
+		http.NotFound(c.ResponseWriter, c.Request)
+		return
 	}
-	// 요청 URL에 해당하는 handler를 찾지 못하면 NotFound 에러 처리
-	http.NotFound(w, req)
-	return
 }
+
 func match(pattern, path string) (bool, map[string]string) {
 	// 패턴과 패스가 정확히 일치하면 바로 true를 반환
 	if pattern == path {
 		return true, nil
 	}
 
-
 	// 패턴과 패스를 “/” 단위로 구분
 	patterns := strings.Split(pattern, "/")
 	paths := strings.Split(path, "/")
-
 
 	// 패턴과 패스를 “/“로 구분한 후 부분 문자열 집합의 개수가 다르면 false를 반환
 	if len(patterns) != len(paths) {
 		return false, nil
 	}
 
-
 	// 패턴에 일치하는 URL 매개변수를 담기 위한 params 맵 생성
 	params := make(map[string]string)
-
 
 	// “/“로 구분된 패턴/패스의 각 문자열을 하나씩 비교
 	for i := 0; i < len(patterns); i++ {
@@ -83,7 +77,6 @@ func match(pattern, path string) (bool, map[string]string) {
 			return false, nil
 		}
 	}
-
 
 	// true와 params를 반환
 	return true, params
